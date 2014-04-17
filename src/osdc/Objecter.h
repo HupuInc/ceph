@@ -1624,7 +1624,6 @@ private:
   bool _promote_lock_check_race(RWLock::Context& lc);
 
   // low-level
-  void _op_assign(Op *op, RWLock::Context& lc);
   ceph_tid_t _op_submit(Op *op, RWLock::Context& lc);
   ceph_tid_t _op_submit_with_budget(Op *op, RWLock::Context& lc);
   inline void unregister_op(Op *op);

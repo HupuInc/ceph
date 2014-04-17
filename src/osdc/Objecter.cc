@@ -1425,20 +1425,6 @@ ceph_tid_t Objecter::_op_submit_with_budget(Op *op, RWLock::Context& lc)
   return _op_submit(op, lc);
 }
 
-/* might drop and reacquire rwlock */
-void Objecter::_op_assign(Op *op, RWLock::Context& lc)
-{
-  assert(rwlock.is_locked());
-  int r;
-  do {
-    r = _session_op_assign(op, lc);
-    if (r == -EAGAIN) {
-      assert(!lc.is_wlocked());
-      lc.promote();
-    }
-  } while (r == -EAGAIN);
-}
-
 ceph_tid_t Objecter::_op_submit(Op *op, RWLock::Context& lc)
 {
   assert(rwlock.is_locked());
@@ -1455,12 +1441,13 @@ ceph_tid_t Objecter::_op_submit(Op *op, RWLock::Context& lc)
     if (r == -EAGAIN) {
       assert(!lc.is_wlocked());
       lc.promote();
+    } else {
+      r = _session_op_assign(op, lc);
+      assert(!lc.is_wlocked());
+      lc.promote();
     }
   } while (r == -EAGAIN);
 
-  if (!op->session) {
-    _op_assign(op, lc);
-  }
   assert(op->session); /* session can be homeless session too */
   bool check_for_latest_map = (r == RECALC_OP_TARGET_POOL_DNE);
 
@@ -1565,8 +1552,9 @@ ceph_tid_t Objecter::_op_submit(Op *op, RWLock::Context& lc)
         check_for_latest_map = (_recalc_op_target(op, lc) == RECALC_OP_TARGET_POOL_DNE);
 
         if (!op->session) { /* _recalc_op_target() may have reset op->session */
-          /* we are under rwlock write, so _op_assign is not going to drop the lock */
-          _op_assign(op, lc);
+          /* we are under rwlock write, so we're not going to get -EAGAIN here */
+          r = _session_op_assign(op, lc);
+          assert(r == 0);
         }
       } else {
         r = 0;
